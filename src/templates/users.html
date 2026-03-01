@@ -1,22 +1,81 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <title>users</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Users - Cloud Inventory</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="container mt-5">
+<body class="bg-light">
 
-<h3>create user</h3>
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark m-0">👥 User Management</h2>
+            <p class="text-muted small">Control system access and permissions</p>
+        </div>
+        <a href="/dashboard" class="btn btn-outline-secondary btn-sm">Back to Dashboard</a>
+    </div>
 
-<form method="post" action="/users">
-    <div class="mb-3">
-        <input type="text" name="name" class="form-control" placeholder="name" required>
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="ps-4">User Details</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th class="text-end pe-4">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 35px; height: 35px; font-size: 0.8rem;">
+                                    {{ user.name[:1].upper() }}
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-dark">{{ user.name }}</div>
+                                    <div class="text-muted small">ID: #{{ user.id }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        
+                        <td class="text-secondary">{{ user.email }}</td>
+                        
+                        <td>
+                            {% if user.role == "admin" %}
+                                <span class="badge bg-info text-dark">Administrator</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">Standard User</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="text-end pe-4">
+                            {% if user.id != session.user_id %}
+                            <form method="post" action="/delete-user" onsubmit="return confirm('Are you sure you want to remove this user?');">
+                                <input type="hidden" name="user_id" value="{{ user.id }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    Remove
+                                </button>
+                            </form>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary px-3 py-2">You</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="mb-3">
-        <input type="email" name="email" class="form-control" placeholder="email" required>
+    
+    <div class="mt-4 p-3 bg-white rounded shadow-sm border-start border-4 border-warning">
+        <small class="text-muted"><strong>Security Note:</strong> Deleting a user will revoke their access immediately. You cannot delete your own account while logged in.</small>
     </div>
-    <button type="submit" class="btn btn-primary">create</button>
-</form>
+</div>
 
 </body>
 </html>

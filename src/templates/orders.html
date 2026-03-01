@@ -1,39 +1,88 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <title>orders</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Order - Cloud Inventory</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="container mt-5">
+<body class="bg-light pb-5">
 
-<h3>create order</h3>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="fw-bold text-dark m-0">🛒 New Sales Order</h2>
+                <a href="/dashboard" class="btn btn-outline-secondary btn-sm">Cancel</a>
+            </div>
 
-<form method="post" action="/orders">
+            <form method="post" action="/orders">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-body">
+                        <label class="form-label fw-bold">Customer / User</label>
+                        <select name="user_id" class="form-select form-select-lg" required>
+                            <option value="" selected disabled>Choose a customer...</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}">{{ user.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
 
-    <div class="mb-3">
-        <label>select user</label>
-        <select name="user_id" class="form-control">
-            {% for user in users %}
-            <option value="{{ user.id }}">{{ user.name }}</option>
-            {% endfor %}
-        </select>
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0">Select Products</h5>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for product in products %}
+                        <div class="list-group-item py-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="product_id" value="{{ product.id }}" id="prod_{{ product.id }}">
+                                        <label class="form-check-label fw-semibold" for="prod_{{ product.id }}">
+                                            {{ product.name }}
+                                        </label>
+                                        <div class="small text-muted">Price: ₹{{ "{:,.2f}".format(product.price) }}</div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-3 text-center">
+                                    {% if product.stock_quantity > 0 %}
+                                        <span class="badge rounded-pill bg-success-subtle text-success border border-success">
+                                            {{ product.stock_quantity }} in stock
+                                        </span>
+                                    {% else %}
+                                        <span class="badge rounded-pill bg-danger-subtle text-danger border border-danger">
+                                            Out of stock
+                                        </span>
+                                    {% endif %}
+                                </div>
+
+                                <div class="col-md-3">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">Qty</span>
+                                        <input type="number" name="quantity_{{ product.id }}" class="form-control" min="1" value="1" 
+                                               {% if product.stock_quantity <= 0 %}disabled{% endif %}>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="card-footer bg-white p-4">
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg shadow">Confirm & Create Order</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label>select product</label>
-        <select name="product_id" class="form-control">
-            {% for product in products %}
-            <option value="{{ product.id }}">{{ product.name }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <input type="number" name="quantity" class="form-control" placeholder="quantity" required>
-    </div>
-
-    <button type="submit" class="btn btn-warning">create order</button>
-</form>
+</div>
 
 </body>
 </html>

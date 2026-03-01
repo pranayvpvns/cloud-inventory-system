@@ -3,6 +3,7 @@ from db_config import db_connection
 from mongo_config import get_mongo_connection
 from flask import render_template
 from extensions import db
+from werkzeug.security import generate_password_hash, check_password_hash
 from models import User, Product, Order, OrderItem
 app=Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:root@localhost/cloud_inventory'
@@ -31,17 +32,19 @@ def home():
 def register():
     name = request.form.get("name")
     email = request.form.get("email")
+    password = request.form.get("password")
+    hashed_password = generate_password_hash(password)
     con = db_connection()
     cur = con.cursor()
     cur.execute(
-        "insert into users (name, email) values (%s, %s)",
-        (name, email)
+        "insert into users (name, email, password) values (%s, %s, %s)",
+        (name, email, hashed_password)
     )
     con.commit()
     cur.close()
     con.close()
-    return redirect("/login-page")
 
+    return redirect("/login-page")
 @app.route("/register-page")
 def register_page():
     return render_template("register.html")
@@ -160,46 +163,116 @@ def delete_product(product_id):
 
 @app.route("/orders", methods=["post"])
 def create_order():
-    if request.is_json:
-        data = request.json
-        user_id = data.get("user_id")
-        total_amount = data.get("total_amount")
-        con = db_connection()
-        cur = con.cursor()
-        query = "insert into orders (user_id, total_amount) values (%s, %s)"
-        cur.execute(query, (user_id, total_amount))
-        con.commit()
+
+    if session.get("role") == "admin":
+        return "admins cannot create orders"
+
+    con = db_connection()
+    cur = con.cursor()
+
+    try:
+
+        if request.is_json:
+            data = request.json
+            user_id = data.get("user_id")
+            items = data.get("items")
+        else:
+            user_id = request.form.get("user_id")
+            selected_products = request.form.getlist("product_id")
+
+            if not selected_products:
+                return "no products selected"
+
+            items = []
+            for product_id in selected_products:
+                quantity = int(request.form.get(f"quantity_{product_id}"))
+                items.append({
+                    "product_id": int(product_id),
+                    "quantity": quantity
+                })
+
+        if not items:
+            return "no products provided", 400
+
+        total_amount = 0
+
+        for item in items:
+            product_id = item["product_id"]
+            quantity = int(item["quantity"])
+
+            cur.execute("select price from products where id=%s", (product_id,))
+            product = cur.fetchone()
+            if not product:
+                return f"product {product_id} not found", 404
+
+            price = float(product[0])
+
+            cur.execute("select stock_quantity from inventory where product_id=%s", (product_id,))
+            stock = cur.fetchone()
+            if not stock or stock[0] < quantity:
+                return f"insufficient stock for product {product_id}", 400
+
+            total_amount += price * quantity
+
+        cur.execute(
+            "insert into orders (user_id, total_amount) values (%s, %s)",
+            (user_id, total_amount)
+        )
         order_id = cur.lastrowid
+
+        for item in items:
+            product_id = item["product_id"]
+            quantity = int(item["quantity"])
+
+            cur.execute(
+                "insert into order_items (order_id, product_id, quantity) values (%s, %s, %s)",
+                (order_id, product_id, quantity)
+            )
+
+            cur.execute(
+                "update inventory set stock_quantity = stock_quantity - %s where product_id=%s",
+                (quantity, product_id)
+            )
+
+        con.commit()
+
+        # 🔥 Enhanced Mongo Log
+        cur.execute("select name from users where id=%s", (user_id,))
+        user_name = cur.fetchone()[0]
+
+        product_details = []
+        for item in items:
+            cur.execute("select name from products where id=%s", (item["product_id"],))
+            product_name = cur.fetchone()[0]
+
+            product_details.append({
+                "product_name": product_name,
+                "quantity": item["quantity"]
+            })
+
         log_activity("order_created", {
             "order_id": order_id,
-            "user_id": user_id,
+            "user_name": user_name,
+            "products": product_details,
             "total_amount": total_amount
         })
-        cur.close()
-        con.close()
-        return jsonify({
-            "message": "order created",
-            "order_id": order_id
-        }), 201
-    else:
-        user_id = request.form.get("user_id")
-        product_id = request.form.get("product_id")
-        quantity = request.form.get("quantity")
-        con = db_connection()
-        cur = con.cursor()
-        cur.execute("insert into orders (user_id, total_amount) values (%s, %s)",(user_id, 0))
-        con.commit()
-        order_id = cur.lastrowid
-        cur.execute("insert into order_items (order_id, product_id, quantity) values (%s, %s, %s)",(order_id, product_id, quantity))
-        con.commit()
-        log_activity("order_created", {
-            "order_id": order_id,
-            "user_id": user_id
-        })
-        cur.close()
-        con.close()
-        return "order created successfully"
 
+        if request.is_json:
+            return jsonify({
+                "message": "order created successfully",
+                "order_id": order_id,
+                "total_amount": total_amount
+            }), 201
+
+        return f"order created successfully! total amount: ₹{total_amount}"
+
+    except Exception as e:
+        con.rollback()
+        return str(e), 500
+
+    finally:
+        cur.close()
+        con.close()
 @app.route("/order-items", methods=["post"])
 def add_order_item():
     data = request.json
@@ -249,25 +322,72 @@ def log_activity(action, details):
 
 @app.route("/users-page")
 def users_page():
-    return render_template("users.html")
+
+    if session.get("role") != "admin":
+        return "access denied"
+    con = db_connection()
+    cur = con.cursor(dictionary=True)
+    cur.execute("select id, name, email, role from users")
+    users = cur.fetchall()
+    cur.close()
+    con.close()
+    return render_template("users.html", users=users)
 
 @app.route("/products-page")
 def products_page():
-    return render_template("products.html")
+
+    if session.get("role") != "admin":
+        return "access denied"
+    con = db_connection()
+    cur = con.cursor(dictionary=True)
+    cur.execute("select * from products")
+    products = cur.fetchall()
+    cur.close()
+    con.close()
+    return render_template("products.html", products=products)
 
 @app.route("/orders-page")
 def orders_page():
 
     con = db_connection()
     cur = con.cursor(dictionary=True)
-    cur.execute("select * from users")
-    users = cur.fetchall()
-    cur.execute("select * from products")
-    products = cur.fetchall()
-    cur.close()
-    con.close()
 
-    return render_template("orders.html", users=users, products=products)
+    # 👑 If Admin → Show Orders List
+    if session.get("role") == "admin":
+
+        cur.execute("""
+            select 
+                o.id as order_id,
+                u.name as user_name,
+                o.total_amount
+            from orders o
+            join users u on o.user_id = u.id
+            order by o.id desc
+        """)
+        orders = cur.fetchall()
+
+        cur.close()
+        con.close()
+
+        return render_template("admin_orders.html", orders=orders)
+
+    # 👤 If Normal User → Show Order Creation Page
+    else:
+
+        cur.execute("select * from users")
+        users = cur.fetchall()
+
+        cur.execute("""
+            select p.id, p.name, p.price, i.stock_quantity
+            from products p
+            left join inventory i on p.id = i.product_id
+        """)
+        products = cur.fetchall()
+
+        cur.close()
+        con.close()
+
+        return render_template("orders.html", users=users, products=products)
 
 @app.route("/login-page")
 def login_page():
@@ -276,17 +396,23 @@ def login_page():
 @app.route("/login", methods=["post"])
 def login():
     email = request.form.get("email")
+    password = request.form.get("password")
+
     con = db_connection()
     cur = con.cursor(dictionary=True)
+
     cur.execute("select * from users where email=%s", (email,))
     user = cur.fetchone()
+
     cur.close()
     con.close()
-    if user:
+
+    if user and check_password_hash(user["password"], password):
         session["user_id"] = user["id"]
+        session["role"] = user["role"]   
         return redirect("/dashboard")
     else:
-        return "user not found"
+        return "invalid credentials"
 
 @app.route("/dashboard")
 def dashboard():
@@ -317,32 +443,40 @@ def get_inventory():
 
 @app.route("/inventory", methods=["post"])
 def add_inventory():
+
+    # 🔒 Allow only admin
+    if session.get("role") != "admin":
+        return "access denied"
+
     data = request.json
     product_id = data.get("product_id")
-    stock_quantity = data.get("stock_quantity")
+    stock_quantity = int(data.get("stock_quantity"))
+
     con = db_connection()
-    cur = con.cursor(dictionary=True)
+    cur = con.cursor()
+
+    # 🔍 Check if inventory already exists
     cur.execute("select * from inventory where product_id=%s", (product_id,))
     existing = cur.fetchone()
-    cur.close()
-    cur = con.cursor()
+
     if existing:
+        # ✅ Increase stock
         cur.execute(
-            "update inventory set stock_quantity=%s where product_id=%s",
+            "update inventory set stock_quantity = stock_quantity + %s where product_id=%s",
             (stock_quantity, product_id)
         )
-        message = "inventory updated"
     else:
+        # ✅ Insert new inventory
         cur.execute(
             "insert into inventory (product_id, stock_quantity) values (%s, %s)",
             (product_id, stock_quantity)
         )
-        message = "inventory added"
+
     con.commit()
     cur.close()
     con.close()
 
-    return jsonify({"message": message}), 200
+    return jsonify({"message": "inventory updated successfully"}), 200
 @app.route("/inventory/<int:inventory_id>", methods=["put"])
 def update_inventory(inventory_id):
     data = request.json
@@ -365,6 +499,100 @@ def delete_inventory(inventory_id):
     cur.close()
     con.close()
     return jsonify({"message": "inventory deleted"})
+
+@app.route("/inventory-page")
+def inventory_page():
+
+    if session.get("role") != "admin":
+        return "access denied"
+
+    con = db_connection()
+    cur = con.cursor(dictionary=True)
+
+    cur.execute("""
+        select p.id, p.name, p.price, i.stock_quantity
+        from products p
+        left join inventory i on p.id = i.product_id
+    """)
+
+    products = cur.fetchall()
+
+    cur.close()
+    con.close()
+
+    return render_template("inventory.html", products=products)
+
+@app.route("/inventory-ui", methods=["post"])
+def inventory_ui():
+
+    if session.get("role") != "admin":
+        return "access denied"
+
+    product_id = request.form.get("product_id")
+    stock_quantity = int(request.form.get("stock_quantity"))
+
+    con = db_connection()
+    cur = con.cursor()
+
+    # check existing
+    cur.execute("select * from inventory where product_id=%s", (product_id,))
+    existing = cur.fetchone()
+
+    if existing:
+        cur.execute(
+            "update inventory set stock_quantity = stock_quantity + %s where product_id=%s",
+            (stock_quantity, product_id)
+        )
+    else:
+        cur.execute(
+            "insert into inventory (product_id, stock_quantity) values (%s, %s)",
+            (product_id, stock_quantity)
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+    return redirect("/inventory-page")
+
+@app.route("/delete-user", methods=["post"])
+def delete_user_ui():
+
+    if session.get("role") != "admin":
+        return "access denied"
+
+    user_id = request.form.get("user_id")
+
+    con = db_connection()
+    cur = con.cursor()
+
+    cur.execute("delete from users where id=%s", (user_id,))
+    con.commit()
+
+    cur.close()
+    con.close()
+
+    return redirect("/users-page")
+
+@app.route("/delete-product", methods=["post"])
+def delete_product_ui():
+
+    if session.get("role") != "admin":
+        return "access denied"
+
+    product_id = request.form.get("product_id")
+
+    con = db_connection()
+    cur = con.cursor()
+
+    cur.execute("delete from products where id=%s", (product_id,))
+    con.commit()
+
+    cur.close()
+    con.close()
+
+    return redirect("/products-page")
+
 
 if __name__ == "__main__":
     app.run(app.run(host="0.0.0.0", port=5000, debug=True))

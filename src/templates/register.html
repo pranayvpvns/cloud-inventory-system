@@ -1,18 +1,70 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <title>register</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Cloud Inventory</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="container mt-5">
+<body class="bg-light d-flex align-items-center vh-100">
 
-<h3>register</h3>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-10 col-md-8 col-lg-5">
+            
+            <div class="card shadow border-0 rounded-4">
+                <div class="card-body p-4 p-md-5">
+                    <div class="text-center mb-4">
+                        <h3 class="fw-bold">Create Account</h3>
+                        <p class="text-muted">Join the Cloud Inventory network</p>
+                    </div>
+                    
+                    <form method="post" action="/register">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label small fw-bold">Full Name</label>
+                                <input type="text" name="name" class="form-control" placeholder="John Doe" required>
+                            </div>
 
-<form method="post" action="/register">
-    <input type="text" name="name" class="form-control mb-3" placeholder="name" required>
-    <input type="email" name="email" class="form-control mb-3" placeholder="email" required>
-    <button class="btn btn-success">register</button>
-</form>
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label small fw-bold">Email Address</label>
+                                <input type="email" name="email" class="form-control" placeholder="john@example.com" required>
+                            </div>
+
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label small fw-bold">Account Role</label>
+                                <select name="role" class="form-select" required>
+                                    <option value="user" selected>Standard User</option>
+                                    <option value="admin">Administrator</option>
+                                </select>
+                                <div class="form-text">Admins can manage products and users.</div>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label small fw-bold">Password</label>
+                                <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                            </div>
+
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label small fw-bold">Confirm</label>
+                                <input type="password" name="confirm_password" class="form-control" placeholder="••••••••" required>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg shadow-sm">Create Account</button>
+                        </div>
+                    </form>
+
+                    <div class="text-center mt-4">
+                        <p class="small text-muted mb-0">Already have an account? <a href="/login-page" class="text-decoration-none fw-bold">Login</a></p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
